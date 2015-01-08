@@ -1,0 +1,23 @@
+{
+  "name": "unibot-github",
+  "version": "1.0.0",
+  "description": "Generic GitHub plugin for UniBot. This plugin uses [GitHub API v3](https://developer.github.com/v3/) to show common data from GitHub user / organization.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/UniBot/unibot-github.git"
+  },
+  "author": "Tarmo Leppänen",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/UniBot/unibot-github/issues"
+  },
+  "dependencies": {
+    "github": "~0.2.3",
+    "lodash": "~2.4.1",
+    "moment": "~2.9.0"
+  }
+}
