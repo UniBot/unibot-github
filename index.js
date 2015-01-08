@@ -95,5 +95,5 @@ module.exports = function init(options) {
             }
         };
     };
-}({});
+};
 
