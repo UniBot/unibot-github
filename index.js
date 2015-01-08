@@ -41,7 +41,7 @@ module.exports = function init(options) {
             "format": "D.M.YYYY HH:mm:ss"
         },
         "message": {
-            "gist": "${description} - ${date} - ${url}"
+            "gist": "${url} - ${date} - ${description}"
         }
     };
 
