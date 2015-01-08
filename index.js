@@ -4,6 +4,7 @@
  * @type {exports}
  */
 var GitHubApi = require('github');
+var shorturl = require('shorturl');
 var moment = require('moment');
 var _ = require('lodash');
 
@@ -82,13 +83,16 @@ module.exports = function init(options) {
                     } else {
                         _.forEach(result, function iterator(gist) {
                             var templateVars = {
-                                url: gist.url,
                                 date: moment(gist.created_at < gist.updated_at ? gist.updated_at : gist.created_at).format(pluginConfig.moment.format),
                                 description: gist.description,
                                 files: gist.files.length
                             };
 
-                            channel.say(_.template(pluginConfig.message.gist, templateVars));
+                            shorturl(gist.html_url, function done(shortUrl) {
+                                templateVars.url = shortUrl;
+
+                                channel.say(_.template(pluginConfig.message.gist, templateVars));
+                            });
                         });
                     }
                 });
