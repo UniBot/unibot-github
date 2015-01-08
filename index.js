@@ -62,7 +62,7 @@ module.exports = function init(options) {
 
     return function plugin(channel) {
         return {
-            "^ghGist(?: (\\S+))?(?: (\\d+))?$": function onMatch(from, matches) {
+            "^!ghGist(?: (\\S+))?(?: (\\d+))?$": function onMatch(from, matches) {
                 var username = from;
                 var itemCount = 1;
 
