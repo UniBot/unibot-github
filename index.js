@@ -6,6 +6,7 @@
 var GitHubApi = require('github');
 var shorturl = require('shorturl');
 var moment = require('moment');
+var async = require('async');
 var _ = require('lodash');
 
 /**
@@ -38,10 +39,11 @@ module.exports = function init(options) {
     var pluginConfig = {
         "moment": {
             "locale": "",
-            "format": "D.M.YYYY HH:mm:ss"
+            "format": "DD.MM.YYYY HH:mm:ss"
         },
-        "message": {
-            "gist": "${url} - ${date} - ${description}"
+        "gist": {
+            "message": "${url} - ${date} - ${description}",
+            "noDescription": "No description"
         }
     };
 
@@ -57,7 +59,7 @@ module.exports = function init(options) {
 
     // Create GitHub API connection
     var github = new GitHubApi({
-        version: "3.0.0"
+        version: '3.0.0'
     });
 
     return function plugin(channel) {
@@ -84,20 +86,43 @@ module.exports = function init(options) {
                         _.forEach(result, function iterator(gist) {
                             var templateVars = {
                                 date: moment(gist.created_at < gist.updated_at ? gist.updated_at : gist.created_at).format(pluginConfig.moment.format),
-                                description: gist.description,
+                                description: gist.description || pluginConfig.gist.noDescription,
                                 files: gist.files.length
                             };
 
                             shorturl(gist.html_url, function done(shortUrl) {
                                 templateVars.url = shortUrl;
 
-                                channel.say(_.template(pluginConfig.message.gist, templateVars));
+                                channel.say(_.template(pluginConfig.gist.message, templateVars));
                             });
                         });
+                    }
+                });
+            },
+            "^!ghOrgMembers(?: (\\S+))$": function onMatch(from, matches) {
+                github.orgs.getMembers({
+                    org: matches[1],
+                    per_page: 300
+                }, function onResult(error, result) {
+                    if (error) {
+                        channel.say('Oh noes, error - ' + JSON.stringify(error), from);
+                    } else {
+                        async.map(
+                            result,
+                            function iterator(member, callback) {
+                                shorturl(member.html_url, function done(shortUrl) {
+                                    callback(null, member.login + ' - ' + shortUrl);
+                                });
+                            },
+                            function callback(error, members) {
+                                if (!_.isEmpty(members)) {
+                                    channel.say(members.join(', '));
+                                }
+                            }
+                        );
                     }
                 });
             }
         };
     };
 };
-
