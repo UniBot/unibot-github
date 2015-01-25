@@ -31,8 +31,9 @@ module.exports = function init(options) {
      *                  locale: string,
      *                  format: string
      *              },
-     *              message: {
-     *                  gist: string
+     *              gist: {
+     *                  message: string,
+     *                  noDescription: string
      *              }
      *          }}
      */
