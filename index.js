@@ -123,6 +123,33 @@ module.exports = function init(options) {
                         );
                     }
                 });
+            },
+            "^!ghRepos(?: (\\S+))(?: (\\d+))?$": function onMatch(from, matches) {
+                github.repos.getFromUser({
+                    user: matches[1],
+                    type: 'owner'
+                }, function onResult(error, result) {
+                    _.each(result, function iterator(repo) {
+                        repo._forks = -repo.forks_count;
+                        repo._watchers = -repo.watchers_count;
+                    });
+
+                    var repoCount = matches[2] ? parseInt(matches[2], 10) : 3;
+
+                    async.map(
+                        _.sortBy(result, ['_forks', '_watchers', 'name']).splice(0, repoCount),
+                        function iterator(repo, callback) {
+                            shorturl(repo.html_url, function done(shortUrl) {
+                                callback(null, repo.name + ' - ' + shortUrl);
+                            });
+                        },
+                        function callback(error, repos) {
+                            if (!_.isEmpty(repos)) {
+                                channel.say(repos.join(', '));
+                            }
+                        }
+                    );
+                });
             }
         };
     };
