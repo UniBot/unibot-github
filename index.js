@@ -124,9 +124,19 @@ module.exports = function init(options) {
                     }
                 });
             },
-            "^!ghRepos(?: (\\S+))(?: (\\d+))?$": function onMatch(from, matches) {
+            "^!ghRepos(?: (\\S+))?(?: (\\d+))?$": function onMatch(from, matches) {
+                var username = from;
+                var itemCount = 2;
+
+                if (matches[2]) {
+                    username = matches[1];
+                    itemCount = matches[2];
+                } else if (matches[1]) {
+                    username = matches[1];
+                }
+
                 github.repos.getFromUser({
-                    user: matches[1],
+                    user: username,
                     type: 'owner'
                 }, function onResult(error, result) {
                     _.each(result, function iterator(repo) {
@@ -134,10 +144,8 @@ module.exports = function init(options) {
                         repo._watchers = -repo.watchers_count;
                     });
 
-                    var repoCount = matches[2] ? parseInt(matches[2], 10) : 3;
-
                     async.map(
-                        _.sortBy(result, ['_forks', '_watchers', 'name']).splice(0, repoCount),
+                        _.sortBy(result, ['_forks', '_watchers', 'name']).splice(0, itemCount),
                         function iterator(repo, callback) {
                             shorturl(repo.html_url, function done(shortUrl) {
                                 callback(null, repo.name + ' - ' + shortUrl);
