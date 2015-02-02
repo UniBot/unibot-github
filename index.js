@@ -63,6 +63,30 @@ module.exports = function init(options) {
         version: '3.0.0'
     });
 
+    var eventParser = {
+        'IssuesEvent': function parser(event, next) {
+            eventParser._makeShortUrl(
+                [event.payload.action + ' issue', event.repo.name],
+                event.payload.issue.html_url,
+                next
+            );
+        },
+        'IssueCommentEvent': function parser(event, next) {
+            eventParser._makeShortUrl(
+                ['Commented issue', event.repo.name],
+                event.payload.comment.html_url,
+                next
+            );
+        },
+        '_makeShortUrl': function _makeShortUrl(message, url, next) {
+            shorturl(url, function done(shortUrl) {
+                message.push(shortUrl);
+
+                next(null, message.join(' - '));
+            });
+        }
+    };
+
     return function plugin(channel) {
         return {
             "^!ghGist(?: (\\S+))?(?: (\\d+))?$": function onMatch(from, matches) {
@@ -157,6 +181,38 @@ module.exports = function init(options) {
                             }
                         }
                     );
+                });
+            },
+            "!ghEvents(?: (\\S+))?(?: (\\d+))?": function onMatch(from, matches) {
+                var username = matches[1] ? matches[1] : from;
+                var itemCount = matches[2] ? matches[2] : 1;
+
+                github.events.getFromUser({
+                    user: username,
+                    per_page: itemCount
+                }, function onResult(error, results) {
+                    if (error) {
+                        channel.say('Oh noes, error - ' + JSON.stringify(error), from);
+                    } else {
+                        async.map(
+                            results,
+                            function iterator(event, callback) {
+                                if (typeof eventParser[event.type] === 'function') {
+                                    eventParser[event.type](event, callback);
+                                } else {
+                                    callback('Sorry event type \'' + event.type + '\' is not supported...');
+                                }
+                            },
+                            function callback(error, results) {
+                                if (error) {
+                                    console.log('-- error --');
+                                    console.log(error);
+                                } else {
+                                    channel.say(results.join(', '));
+                                }
+                            }
+                        );
+                    }
                 });
             }
         };
