@@ -8,6 +8,7 @@ var shorturl = require('shorturl');
 var moment = require('moment');
 var async = require('async');
 var _ = require('lodash');
+var eventParser = require('./EventParser');
 
 /**
  * URL log plugin for UniBot
@@ -62,30 +63,6 @@ module.exports = function init(options) {
     var github = new GitHubApi({
         version: '3.0.0'
     });
-
-    var eventParser = {
-        'IssuesEvent': function parser(event, next) {
-            eventParser._makeShortUrl(
-                [event.payload.action + ' issue', event.repo.name],
-                event.payload.issue.html_url,
-                next
-            );
-        },
-        'IssueCommentEvent': function parser(event, next) {
-            eventParser._makeShortUrl(
-                ['Commented issue', event.repo.name],
-                event.payload.comment.html_url,
-                next
-            );
-        },
-        '_makeShortUrl': function _makeShortUrl(message, url, next) {
-            shorturl(url, function done(shortUrl) {
-                message.push(shortUrl);
-
-                next(null, message.join(' - '));
-            });
-        }
-    };
 
     return function plugin(channel) {
         return {
