@@ -69,7 +69,9 @@ module.exports = function init(options) {
     });
 
     /**
-     * Helper method to make short version of given url
+     * Helper method to make short version of given url. Note that function will try to make short url via multiple
+     * different services in cases when short url creation fails for some reason. Mostly common reason is simple rate
+     * limit exceed. If all services are failing function will fallback to original url.
      *
      * @param   {string}    url         URL to convert short version
      * @param   {function}  next        Callback function
@@ -99,16 +101,26 @@ module.exports = function init(options) {
     }
 
     /**
-     * Generic error handler function.
+     * Generic error handler function, which will just send error message to nick that triggered command where actual
+     * error happened.
      *
      * @param   {*} channel
      * @param   {*} error
      * @private
      */
     function _handleError(channel, error) {
-        channel.say(from, 'Oh noes, error - ' + JSON.stringify(error));
+        channel.say('Oh noes, error - ' + JSON.stringify(error), from);
     }
 
+    /**
+     * Helper function to say message to channel or user itself, if given threshold is exceeded.
+     *
+     * @param   {*}         channel
+     * @param   {string[]}  data
+     * @param   {string}    from
+     * @param   {number}    threshold
+     * @private
+     */
     function _sayMessage(channel, data, from, threshold) {
         if (data.length > threshold) {
             _.forEach(data, function iterator(message) {
@@ -137,7 +149,7 @@ module.exports = function init(options) {
                  * Private parser function for gist handling, this will make the actual message.
                  *
                  * @param   {*}     channel
-                 * @param   {*[]}   gists
+                 * @param   {{}[]}  gists
                  * @private
                  */
                 function _gistParser(channel, gists) {
@@ -174,6 +186,13 @@ module.exports = function init(options) {
                 });
             },
             "^!ghOrgMembers(?: (\\S+))$": function onMatch(from, matches) {
+                /**
+                 * Private parser function for organization members.
+                 *
+                 * @param   {*}     channel
+                 * @param   {{}[]}  members
+                 * @private
+                 */
                 function _orgMembersParser(channel, members) {
                     async.map(
                         members,
@@ -188,6 +207,7 @@ module.exports = function init(options) {
                     );
                 }
 
+                // Fetch specified organization members
                 github.orgs.getMembers({
                     org: matches[1],
                     per_page: 300
@@ -206,14 +226,21 @@ module.exports = function init(options) {
                     username = matches[1];
                 }
 
-                function _repoParser(channel, repos) {
-                    _.forEach(repos, function iterator(repo) {
+                /**
+                 * Private parser function for user / organization repositories.
+                 *
+                 * @param   {*}     channel
+                 * @param   {{}[]}  repositories
+                 * @private
+                 */
+                function _repoParser(channel, repositories) {
+                    _.forEach(repositories, function iterator(repo) {
                         repo._forks = -repo.forks_count;
                         repo._watchers = -repo.watchers_count;
                     });
 
                     async.map(
-                        _.sortBy(repos, ['_forks', '_watchers', 'name']).splice(0, itemCount),
+                        _.sortBy(repositories, ['_forks', '_watchers', 'name']).splice(0, itemCount),
                         function iterator(repo, callback) {
                             _makeShortUrl(repo.html_url, callback, repo.name);
                         },
@@ -225,6 +252,7 @@ module.exports = function init(options) {
                     );
                 }
 
+                // Fetch GitHub repository data
                 github.repos.getFromUser({
                     user: username,
                     type: 'owner'
@@ -236,6 +264,13 @@ module.exports = function init(options) {
                 var username = matches[1] ? matches[1] : from;
                 var itemCount = matches[2] ? matches[2] : 1;
 
+                /**
+                 * Private parser function for user events.
+                 *
+                 * @param   {*}     channel
+                 * @param   {{}[]}  events
+                 * @private
+                 */
                 function _eventParser(channel, events) {
                     _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
 
@@ -252,6 +287,7 @@ module.exports = function init(options) {
                     );
                 }
 
+                // Fetch events
                 github.events.getFromUser({
                     user: username,
                     per_page: itemCount
