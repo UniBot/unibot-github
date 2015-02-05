@@ -45,7 +45,8 @@ module.exports = function init(options) {
         },
         "gist": {
             "message": "${url} - ${date} - ${description}",
-            "noDescription": "No description"
+            "noDescription": "No description",
+            "threshold": 3
         },
         "events": {
             "threshold": 3
@@ -97,6 +98,28 @@ module.exports = function init(options) {
         });
     }
 
+    /**
+     * Generic error handler function.
+     *
+     * @param   {*} channel
+     * @param   {*} error
+     * @private
+     */
+    function _handleError(channel, error) {
+        channel.say(from, 'Oh noes, error - ' + JSON.stringify(error));
+    }
+
+    function _sayMessage(channel, data, from, threshold) {
+        if (data.length > threshold) {
+            _.forEach(data, function iterator(message) {
+                channel.say(from, message);
+            });
+        } else {
+            channel.say(data.join(', '));
+        }
+    }
+
+    // Actual GitHub plugin implementation
     return function plugin(channel) {
         return {
             "^!ghGist(?: (\\S+))?(?: (\\d+))?$": function onMatch(from, matches) {
@@ -110,50 +133,66 @@ module.exports = function init(options) {
                     username = matches[1];
                 }
 
+                /**
+                 * Private parser function for gist handling, this will make the actual message.
+                 *
+                 * @param   {*}     channel
+                 * @param   {*[]}   gists
+                 * @private
+                 */
+                function _gistParser(channel, gists) {
+                    async.map(
+                        gists,
+                        function iterator(gist, callback) {
+                            _makeShortUrl(gist.html_url, function done(error, shortUrl) {
+                                var templateVars = {
+                                    date: moment(gist.created_at < gist.updated_at
+                                        ? gist.updated_at
+                                        : gist.created_at).format(pluginConfig.moment.format),
+                                    description: gist.description || pluginConfig.gist.noDescription,
+                                    files: gist.files.length,
+                                    url: shortUrl
+                                };
+
+                                callback(null, _.template(pluginConfig.gist.message, templateVars));
+                            });
+                        },
+                        function callback(error, gists) {
+                            if (!_.isEmpty(gists)) {
+                                _sayMessage(channel, gists, from, pluginConfig.gist.threshold);
+                            }
+                        }
+                    );
+                }
+
                 // Fetch specified user gist data
                 github.gists.getFromUser({
                     user: username,
                     per_page: itemCount
-                }, function onResult(error, result) {
-                    if (error) {
-                        channel.say('Oh noes, error - ' + JSON.stringify(error), from);
-                    } else {
-                        _.forEach(result, function iterator(gist) {
-                            var templateVars = {
-                                date: moment(gist.created_at < gist.updated_at ? gist.updated_at : gist.created_at).format(pluginConfig.moment.format),
-                                description: gist.description || pluginConfig.gist.noDescription,
-                                files: gist.files.length
-                            };
-
-                            _makeShortUrl(gist.html_url, function done(error, shortUrl) {
-                                templateVars.url = shortUrl;
-
-                                channel.say(_.template(pluginConfig.gist.message, templateVars));
-                            });
-                        });
-                    }
+                }, function onResult(error, gists) {
+                    error ? _handleError(channel, error) : _gistParser(channel, gists);
                 });
             },
             "^!ghOrgMembers(?: (\\S+))$": function onMatch(from, matches) {
+                function _orgMembersParser(channel, members) {
+                    async.map(
+                        members,
+                        function iterator(member, callback) {
+                            _makeShortUrl(member.html_url, callback, member.login);
+                        },
+                        function callback(error, members) {
+                            if (!_.isEmpty(members)) {
+                                channel.say(members.join(', '));
+                            }
+                        }
+                    );
+                }
+
                 github.orgs.getMembers({
                     org: matches[1],
                     per_page: 300
-                }, function onResult(error, result) {
-                    if (error) {
-                        channel.say('Oh noes, error - ' + JSON.stringify(error), from);
-                    } else {
-                        async.map(
-                            result,
-                            function iterator(member, callback) {
-                                _makeShortUrl(member.html_url, callback, member.login);
-                            },
-                            function callback(error, members) {
-                                if (!_.isEmpty(members)) {
-                                    channel.say(members.join(', '));
-                                }
-                            }
-                        );
-                    }
+                }, function onResult(error, members) {
+                    error ? _handleError(channel, error) : _orgMembersParser(channel, members);
                 });
             },
             "^!ghRepos(?: (\\S+))?(?: (\\d+))?$": function onMatch(from, matches) {
@@ -167,17 +206,14 @@ module.exports = function init(options) {
                     username = matches[1];
                 }
 
-                github.repos.getFromUser({
-                    user: username,
-                    type: 'owner'
-                }, function onResult(error, result) {
-                    _.each(result, function iterator(repo) {
+                function _repoParser(channel, repos) {
+                    _.forEach(repos, function iterator(repo) {
                         repo._forks = -repo.forks_count;
                         repo._watchers = -repo.watchers_count;
                     });
 
                     async.map(
-                        _.sortBy(result, ['_forks', '_watchers', 'name']).splice(0, itemCount),
+                        _.sortBy(repos, ['_forks', '_watchers', 'name']).splice(0, itemCount),
                         function iterator(repo, callback) {
                             _makeShortUrl(repo.html_url, callback, repo.name);
                         },
@@ -187,44 +223,40 @@ module.exports = function init(options) {
                             }
                         }
                     );
+                }
+
+                github.repos.getFromUser({
+                    user: username,
+                    type: 'owner'
+                }, function onResult(error, repos) {
+                    error ? _handleError(channel, error) : _repoParser(channel, repos);
                 });
             },
             "!ghEvents(?: (\\S+))?(?: (\\d+))?": function onMatch(from, matches) {
                 var username = matches[1] ? matches[1] : from;
                 var itemCount = matches[2] ? matches[2] : 1;
 
+                function _eventParser(channel, events) {
+                    _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
+
+                    async.map(
+                        events,
+                        function iterator(event, callback) {
+                            var parsed = parseGithubEvent.parse(event);
+
+                            _makeShortUrl(parsed.html_url, callback, _.template(parsed.text, parsed.data));
+                        },
+                        function callback(error, events) {
+                            _sayMessage(channel, events, from, pluginConfig.events.threshold);
+                        }
+                    );
+                }
+
                 github.events.getFromUser({
                     user: username,
                     per_page: itemCount
-                }, function onResult(error, results) {
-                    if (error) {
-                        channel.say('Oh noes, error - ' + JSON.stringify(error), from);
-                    } else {
-                        _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
-
-                        async.map(
-                            results,
-                            function iterator(event, callback) {
-                                var parsed = parseGithubEvent.parse(event);
-
-                                _makeShortUrl(parsed.html_url, callback, _.template(parsed.text, parsed.data));
-                            },
-                            function callback(error, results) {
-                                if (error) {
-                                    console.log('-- error --');
-                                    console.log(error);
-                                } else {
-                                    if (results.length > pluginConfig.events.threshold) {
-                                        _.each(results, function iterator(message) {
-                                            channel.say(message, from);
-                                        });
-                                    } else {
-                                        channel.say(results.join(', '));
-                                    }
-                                }
-                            }
-                        );
-                    }
+                }, function onResult(error, events) {
+                    error ? _handleError(channel, error) : _eventParser(channel, events);
                 });
             }
         };
