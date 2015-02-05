@@ -35,7 +35,7 @@ message = '!' + message;
 
 var match = false;
 
-_.each(plugin({})({say: function(from, message) { message ? console.log(from + ': ' + message) : console.log(from); } }), function iterator(callback, pattern) {
+_.each(plugin({})({say: function(message, from) { from ? console.log(from + ': ' + message) : console.log(message); } }), function iterator(callback, pattern) {
     var expression = new RegExp(pattern, 'i');
     var matches = expression.exec(message);
 

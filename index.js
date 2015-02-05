@@ -112,7 +112,7 @@ module.exports = function init(options) {
     function _sayMessage(channel, data, from, threshold) {
         if (data.length > threshold) {
             _.forEach(data, function iterator(message) {
-                channel.say(from, message);
+                channel.say(message, from);
             });
         } else {
             channel.say(data.join(', '));
