@@ -8,10 +8,10 @@ var shorturl = require('shorturl');
 var moment = require('moment');
 var async = require('async');
 var _ = require('lodash');
-var eventParser = require('./EventParser');
+var parseGithubEvent = require("parse-github-event");
 
 /**
- * URL log plugin for UniBot
+ * Generic GitHub plugin for UniBot
  *
  * @param  {Object} options Plugin options object, description below.
  *   db: {mongoose} the mongodb connection
@@ -46,6 +46,9 @@ module.exports = function init(options) {
         "gist": {
             "message": "${url} - ${date} - ${description}",
             "noDescription": "No description"
+        },
+        "events": {
+            "threshold": 3
         }
     };
 
@@ -63,6 +66,36 @@ module.exports = function init(options) {
     var github = new GitHubApi({
         version: '3.0.0'
     });
+
+    /**
+     * Helper method to make short version of given url
+     *
+     * @param   {string}    url         URL to convert short version
+     * @param   {function}  next        Callback function
+     * @param   {string}    [message]   Possible message which is prepended to short url
+     * @param   {array}     [services]  Array of short url services
+     *
+     * @private
+     */
+    function _makeShortUrl(url, next, message, services) {
+        // Specify default order of short url services, this is initialized on first call
+        services = services || ['v.gd', 'arseh.at', 'goo.gl', 'is.gd'];
+
+        // Get next service from queue
+        var service = services.pop();
+
+        // Create
+        shorturl(url, service, function done(shortUrl) {
+            // Darn short url generation failed, so just try to generate it again with left services
+            if (_.isUndefined(shortUrl) && services.length > 0) {
+                _makeShortUrl(url, next, message, services);
+            } else {
+                message = message ? message + ' - ' : '';
+
+                next(null, message + shortUrl || url);
+            }
+        });
+    }
 
     return function plugin(channel) {
         return {
@@ -92,7 +125,7 @@ module.exports = function init(options) {
                                 files: gist.files.length
                             };
 
-                            shorturl(gist.html_url, function done(shortUrl) {
+                            _makeShortUrl(gist.html_url, function done(error, shortUrl) {
                                 templateVars.url = shortUrl;
 
                                 channel.say(_.template(pluginConfig.gist.message, templateVars));
@@ -112,9 +145,7 @@ module.exports = function init(options) {
                         async.map(
                             result,
                             function iterator(member, callback) {
-                                shorturl(member.html_url, function done(shortUrl) {
-                                    callback(null, member.login + ' - ' + shortUrl);
-                                });
+                                _makeShortUrl(member.html_url, callback, member.login);
                             },
                             function callback(error, members) {
                                 if (!_.isEmpty(members)) {
@@ -148,9 +179,7 @@ module.exports = function init(options) {
                     async.map(
                         _.sortBy(result, ['_forks', '_watchers', 'name']).splice(0, itemCount),
                         function iterator(repo, callback) {
-                            shorturl(repo.html_url, function done(shortUrl) {
-                                callback(null, repo.name + ' - ' + shortUrl);
-                            });
+                            _makeShortUrl(repo.html_url, callback, repo.name);
                         },
                         function callback(error, repos) {
                             if (!_.isEmpty(repos)) {
@@ -171,21 +200,27 @@ module.exports = function init(options) {
                     if (error) {
                         channel.say('Oh noes, error - ' + JSON.stringify(error), from);
                     } else {
+                        _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
+
                         async.map(
                             results,
                             function iterator(event, callback) {
-                                if (typeof eventParser[event.type] === 'function') {
-                                    eventParser[event.type](event, callback);
-                                } else {
-                                    callback('Sorry event type \'' + event.type + '\' is not supported...');
-                                }
+                                var parsed = parseGithubEvent.parse(event);
+
+                                _makeShortUrl(parsed.html_url, callback, _.template(parsed.text, parsed.data));
                             },
                             function callback(error, results) {
                                 if (error) {
                                     console.log('-- error --');
                                     console.log(error);
                                 } else {
-                                    channel.say(results.join(', '));
+                                    if (results.length > pluginConfig.events.threshold) {
+                                        _.each(results, function iterator(message) {
+                                            channel.say(message, from);
+                                        });
+                                    } else {
+                                        channel.say(results.join(', '));
+                                    }
                                 }
                             }
                         );
