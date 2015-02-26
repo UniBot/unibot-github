@@ -105,10 +105,11 @@ module.exports = function init(options) {
      * error happened.
      *
      * @param   {*} channel
+     * @param   {*} from
      * @param   {*} error
      * @private
      */
-    function _handleError(channel, error) {
+    function _handleError(channel, from, error) {
         channel.say('Oh noes, error - ' + JSON.stringify(error), from);
     }
 
@@ -182,7 +183,7 @@ module.exports = function init(options) {
                     user: username,
                     per_page: itemCount
                 }, function onResult(error, gists) {
-                    error ? _handleError(channel, error) : _gistParser(channel, gists);
+                    error ? _handleError(channel, from, error) : _gistParser(channel, gists);
                 });
             },
             "^!ghOrgMembers(?: (\\S+))$": function onMatch(from, matches) {
@@ -212,7 +213,7 @@ module.exports = function init(options) {
                     org: matches[1],
                     per_page: 300
                 }, function onResult(error, members) {
-                    error ? _handleError(channel, error) : _orgMembersParser(channel, members);
+                    error ? _handleError(channel, from, error) : _orgMembersParser(channel, members);
                 });
             },
             "^!ghRepos(?: (\\S+))?(?: (\\d+))?$": function onMatch(from, matches) {
@@ -257,7 +258,7 @@ module.exports = function init(options) {
                     user: username,
                     type: 'owner'
                 }, function onResult(error, repos) {
-                    error ? _handleError(channel, error) : _repoParser(channel, repos);
+                    error ? _handleError(channel, from, error) : _repoParser(channel, repos);
                 });
             },
             "!ghEvents(?: (\\S+))?(?: (\\d+))?": function onMatch(from, matches) {
@@ -292,7 +293,7 @@ module.exports = function init(options) {
                     user: username,
                     per_page: itemCount
                 }, function onResult(error, events) {
-                    error ? _handleError(channel, error) : _eventParser(channel, events);
+                    error ? _handleError(channel, from, error) : _eventParser(channel, events);
                 });
             }
         };
